@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploy Cloud_Scanner infrastructure 
+
+Parameters:
+  DynamoTable:
+    Description: Name of the Dynamo table where sensitive data will be stored
+    Type: String
+    Default: cloudscanner_data
+  VpcID:
+    Description: VpcID to where to set Cloud_Scanner Instance
+    Type: String
+    Default: vpc-58b62f20
+  ImageID:
+    Description: AMI id to be used for Cloud_Scanner Insatnce
+    Type: String
+    Default: ami-00eb20669e0990cb4
+  KeyName:
+    Description: Key Name to be used for Cloud_Scanner Insatnce
+    Type: String
+    Default: N-Verginia
+
+
+Resources:
+  CloudScannerDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: object_id
+        AttributeType: S
+      - AttributeName: location
+        AttributeType: N
+      KeySchema:
+      - AttributeName: object_id
+        KeyType: HASH
+      - AttributeName: location
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      TableName: !Ref DynamoTable
+  
+  CloudScannerConfTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: conf_object
+        AttributeType: S
+      KeySchema:
+      - AttributeName: conf_object
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      TableName: cloudscanner_conf
+
+  CloudScannerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cloud_Scanner Insatnce Security Group
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcID
+
+  CloudScannerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      Description: This Role is to be used by Cloud Scanner Instance
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      RoleName: CloudScannerInstanceRole
+  
+  CloudScannerInstanceRolePolicies: 
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: CloudScannerInstanceRolePolicies
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: VisualEditor0
+          Effect: Allow
+          Action:
+          - lambda:CreateFunction
+          - lambda:GetFunctionConfiguration
+          - cloudformation:SetStackPolicy
+          - s3:GetBucketTagging
+          - s3:ListBucket
+          - cloudformation:ListExports
+          - cloudformation:UpdateStackSet
+          - cloudformation:CreateChangeSet
+          - cloudformation:DescribeStacks
+          - s3:PutObject
+          - s3:GetObject
+          - s3:PutBucketNotification
+          - lambda:AddPermission
+          - s3:ListAllMyBuckets
+          - cloudformation:CreateStack
+          - s3:PutBucketTagging
+          - cloudformation:UpdateStack
+          - s3:GetObjectTagging
+          - s3:PutObjectTagging
+          - cloudformation:DescribeChangeSet
+          - cloudformation:ExecuteChangeSet
+          - cloudformation:CreateStackSet
+          - lambda:GetPolicy
+          Resource: "*"
+        - Sid: VisualEditor1
+          Effect: Allow
+          Action:
+          - iam:GetRole
+          - dynamodb:PutItem
+          - dynamodb:CreateTable
+          - dynamodb:DescribeTable
+          - iam:CreateRole
+          - iam:PassRole
+          - iam:PutRolePolicy
+          Resource:
+          - Fn::GetAtt: CloudScannerDataTable.Arn
+          - Fn::GetAtt: CloudScannerConfTable.Arn
+      Roles: 
+        - !Ref CloudScannerInstanceRole
+
+  CloudScannerInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Roles:
+        - !Ref CloudScannerInstanceRole
+
+  CloudScannerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Ref ImageID 
+      SecurityGroupIds: 
+      - !Ref CloudScannerSG
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref CloudScannerInstanceProfile
+      Tags:
+      - Key: "Name"
+        Value: "CloudScannerInstance"
+      UserData: IyEvYmluL2Jhc2ggLXgKZWNobyAiQ2xvdWQgU2Nhbm5lcmlzIGxpdmUhIiA+IC9jbG91ZF9zY2FubmVyLm91dAp5dW0gdXBkYXRlIC15Cnl1bSBpbnN0YWxsIGdpdCAteQp5dW0gaW5zdGFsbCBweXRob24zNiAteQpnaXQgY2xvbmUgaHR0cHM6Ly9naXRodWIuY29tL2hpZ2hncm91bmRzZWN1cml0eS9jbG91ZF9zY2FubmVyLmdpdApta2RpciB2ZW52CmNkIHZlbnYKdmlydHVhbGVudiAtcCAvdXNyL2Jpbi9weXRob24zIHB5dGhvbjMgCnNvdXJjZSAvdmVudi9weXRob24zL2Jpbi9hY3RpdmF0ZQpwaXAgaW5zdGFsbCBib3RvMwo=
+
+Outputs:
+  CloudScannerDataTable:
+    Export:
+      Name: CloudScannerDataTable
+    Value:
+      Fn::GetAtt: CloudScannerDataTable.Arn
+  CloudScannerInstance:
+    Export:
+      Name: CloudScannerInstancePublicIp
+    Value:
+      Fn::GetAtt: CloudScannerInstance.PublicIp
+
